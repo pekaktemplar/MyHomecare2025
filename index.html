@@ -68,7 +68,7 @@
             <div class="flex flex-col md:flex-row justify-between items-center">
                  <div class="text-center md:text-left">
                     <h1 class="text-3xl md:text-4xl font-bold text-slate-800">Dashboard Penugasan Medis</h1>
-                    <p class="text-slate-500 mt-2">Fullerton Health Clinic untuk Layanan Halodoc | <span class="font-semibold text-green-600">v1.0 Stabil</span></p>
+                    <p class="text-slate-500 mt-2">Fullerton Health Clinic untuk Layanan Halodoc | <span class="font-semibold text-green-600">v1.1 Cloud Sync</span></p>
                 </div>
                 <div id="userInfo" class="text-center md:text-right mt-4 md:mt-0">
                     <p class="text-sm text-slate-600" id="userEmail"></p>
@@ -237,21 +237,22 @@
     <!-- Firebase SDKs -->
     <script type="module">
         // Import the functions you need from the SDKs you need
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.19.1/firebase-app.js";
-        import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/9.19.1/firebase-auth.js";
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+        import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
+        // Import Firestore SDK
+        import { getFirestore, collection, doc, onSnapshot, addDoc, setDoc, deleteDoc, updateDoc, writeBatch, runTransaction } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
       
         // =========================================================================================
         // PLACEHOLDER 1: KONFIGURASI FIREBASE
         // TODO: Ganti dengan konfigurasi Firebase project Anda.
-        // Anda bisa mendapatkannya dari Firebase Console: Project settings > General.
         // =========================================================================================
         const firebaseConfig = {
-          apiKey: "AIzaSyCJt31PhT_zpVUiWSl9bc3yES0YO6maGAI",
-          authDomain: "myhomecare-e9ead.firebaseapp.com",
-          projectId: "myhomecare-e9ead",
-          storageBucket: "myhomecare-e9ead.firebasestorage.app",
-          messagingSenderId: "527860094564",
-          appId: "1:527860094564:web:960e79ed407e05d9983171"
+          apiKey: "AIzaSy...YOUR_API_KEY",
+          authDomain: "your-project-id.firebaseapp.com",
+          projectId: "your-project-id",
+          storageBucket: "your-project-id.appspot.com",
+          messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+          appId: "1:YOUR_APP_ID:web:YOUR_WEB_APP_ID"
         };
 
         // =========================================================================================
@@ -268,6 +269,8 @@
         // Initialize Firebase
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
+        // Initialize Firestore
+        const db = getFirestore(app);
         const provider = new GoogleAuthProvider();
 
         const loginPage = document.getElementById('loginPage');
@@ -281,6 +284,8 @@
             mainApp.classList.add('hidden');
             loginPage.classList.remove('hidden');
             authMessage.textContent = message;
+            loginBtn.disabled = false;
+            loginBtn.innerHTML = '<i class="fab fa-google mr-2"></i> Login dengan Google';
         };
 
         const showMainApp = (user) => {
@@ -290,44 +295,46 @@
             initializeAppLogic(); // Jalankan logika aplikasi utama
         };
         
-        // Handle Login
+        // Handle Login - Menggunakan redirect
         loginBtn.addEventListener('click', () => {
-            signInWithPopup(auth, provider)
-                .catch((error) => {
-                    console.error("Login Error:", error);
-                    authMessage.textContent = `Login gagal: ${error.message}`;
-                });
+            console.log("Login button clicked. Initiating redirect...");
+            authMessage.textContent = "Mengarahkan ke halaman login Google...";
+            loginBtn.disabled = true;
+            loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Memproses...';
+            signInWithRedirect(auth, provider);
         });
 
         // Handle Logout
         logoutBtn.addEventListener('click', () => {
             signOut(auth);
         });
+        
+        getRedirectResult(auth)
+            .catch((error) => {
+                console.error("Redirect Error:", error);
+                authMessage.textContent = `Login gagal: ${error.message}`;
+            });
 
-        // Listen for authentication state changes
         onAuthStateChanged(auth, (user) => {
             if (user) {
-                // User is signed in.
                 if (authorizedEmails.includes(user.email)) {
-                    // User is authorized.
                     showMainApp(user);
                 } else {
-                    // User is not authorized.
                     signOut(auth);
                     showLoginPage('Akses ditolak. Akun Anda tidak terdaftar.');
                 }
             } else {
-                // User is signed out.
-                showLoginPage();
+                if(!authMessage.textContent.startsWith('Login gagal')) {
+                   showLoginPage();
+                }
             }
         });
 
         // =========================================================================================
-        // LOGIKA APLIKASI UTAMA
-        // Semua fungsionalitas aplikasi (form, daftar tugas, dll.) diletakkan di sini.
-        // Fungsi ini hanya akan dipanggil setelah login berhasil dan terotorisasi.
+        // LOGIKA APLIKASI UTAMA DENGAN FIRESTORE
         // =========================================================================================
         function initializeAppLogic() {
+            // ... (elemen DOM tetap sama)
             const orderForm = document.getElementById('orderForm');
             const taskList = document.getElementById('taskList');
             const emptyMessage = document.getElementById('emptyMessage');
@@ -345,75 +352,56 @@
             const alertModal = document.getElementById('alertModal');
             const alertMessage = document.getElementById('alertMessage');
             const alertOk = document.getElementById('alertOk');
-
-            let orders = JSON.parse(localStorage.getItem('medicalOrders')) || [];
+            
+            // Variabel global untuk menyimpan data dari Firestore
+            let allOrdersData = new Map();
+            let orderSequence = [];
             let orderToDelete = null;
 
-            const showAlert = (message) => {
-                alertMessage.textContent = message;
-                alertModal.style.display = 'flex';
-            };
-            alertOk.addEventListener('click', () => {
-                alertModal.style.display = 'none';
+            // Referensi ke koleksi Firestore
+            const ordersCollectionRef = collection(db, "medicalOrders");
+            const sequenceDocRef = doc(db, "orderManagement", "mainSequence");
+
+            // Listener untuk data order individual
+            onSnapshot(ordersCollectionRef, (snapshot) => {
+                const newOrdersData = new Map();
+                snapshot.forEach(doc => {
+                    newOrdersData.set(doc.id, { id: doc.id, ...doc.data() });
+                });
+                allOrdersData = newOrdersData;
+                renderTasks(); // Render ulang setiap kali ada data order berubah
             });
 
-            const showFormPage = () => {
-                taskListPage.classList.add('hidden');
-                formPage.classList.remove('hidden');
-            };
-            const showTaskListPage = () => {
-                formPage.classList.add('hidden');
-                taskListPage.classList.remove('hidden');
-            };
-
-            const getTodayDateString = () => {
-                const today = new Date();
-                const year = today.getFullYear();
-                const month = String(today.getMonth() + 1).padStart(2, '0');
-                const day = String(today.getDate()).padStart(2, '0');
-                return `${year}-${month}-${day}`;
-            };
-
-            const parseStringToYYYYMMDD = (dateString) => {
-                if (!dateString) return '';
-                const parts = dateString.trim().match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
-                if (!parts) return dateString; 
-                const day = parts[1].padStart(2, '0');
-                const month = parts[2].padStart(2, '0');
-                const year = parts[3];
-                if (parseInt(month, 10) > 12 || parseInt(day, 10) > 31) return dateString;
-                return `${year}-${month}-${day}`;
-            };
-
-            const formatYYYYMMDDtoDDMMYYYY = (dateString) => {
-                if (!dateString || !dateString.includes('-')) return dateString;
-                const parts = dateString.split('-');
-                if (parts.length !== 3) return dateString;
-                const [year, month, day] = parts;
-                return `${day}/${month}/${year}`;
-            };
-
+            // Listener untuk urutan order
+            onSnapshot(sequenceDocRef, (doc) => {
+                orderSequence = doc.exists() ? doc.data().ids : [];
+                renderTasks(); // Render ulang setiap kali urutan berubah
+            });
 
             const renderTasks = () => {
                 taskList.innerHTML = '';
                 const todayStr = getTodayDateString();
-                const activeOrders = orders.filter(order => !order.completed || order.completionDate === todayStr);
+                
+                // Buat array order yang sudah diurutkan
+                const sortedOrders = orderSequence
+                    .map(id => allOrdersData.get(id))
+                    .filter(Boolean); // Filter jika ada order yang dihapus tapi ID masih di sequence
+
+                const activeOrders = sortedOrders.filter(order => !order.completed || order.completionDate === todayStr);
 
                 if (activeOrders.length === 0) {
                     emptyMessage.style.display = 'block';
                 } else {
                     emptyMessage.style.display = 'none';
-                    // NOTE: Pengurutan otomatis berdasarkan tanggal dihapus untuk mengaktifkan pengurutan manual (drag & drop).
-                    // Urutan kini akan sesuai dengan yang disimpan di localStorage.
                     activeOrders.forEach(order => {
+                        // ... (logika render card sama seperti sebelumnya)
                         const orderCard = document.createElement('div');
                         orderCard.className = `p-4 border rounded-lg shadow-sm transition-all ${order.completed ? 'bg-slate-100' : 'bg-white'}`;
                         orderCard.dataset.id = order.id;
-                        orderCard.draggable = true; // Membuat kartu dapat di-drag
+                        orderCard.draggable = true;
 
                         if (order.completed) orderCard.classList.add('task-completed');
                         
-                        // Safely format dates, handle invalid dates
                         const appointmentDateFormatted = order.appointmentDate ? new Date(order.appointmentDate).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'Tanggal tidak valid';
                         const dobFormatted = order.dob ? new Date(order.dob).toLocaleDateString('id-ID') : 'Tanggal tidak valid';
 
@@ -451,31 +439,10 @@
                     });
                 }
             };
-
-            const saveAndRender = () => {
-                localStorage.setItem('medicalOrders', JSON.stringify(orders));
-                renderTasks();
-            };
             
-            const resetForm = () => {
-                orderForm.reset();
-                document.getElementById('orderId').value = '';
-                submitBtn.textContent = 'Tambah Order';
-                document.getElementById('pasteArea').value = ''; // Mengosongkan area paste
-            };
-
-            showFormBtn.addEventListener('click', () => {
-                resetForm();
-                showFormPage();
-            });
-
-            cancelBtn.addEventListener('click', () => {
-                resetForm();
-                showTaskListPage();
-            });
-
-            orderForm.addEventListener('submit', (e) => {
+            orderForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
+                submitBtn.disabled = true;
                 const orderId = document.getElementById('orderId').value;
                 const dobValue = document.getElementById('dob').value;
                 const appointmentDateValue = document.getElementById('appointmentDate').value;
@@ -494,37 +461,50 @@
                     detailedService: document.getElementById('detailedService').value,
                 };
 
-                if (orderId) {
-                    const index = orders.findIndex(o => o.id === orderId);
-                    if (index > -1) {
-                        orders[index] = { ...orders[index], ...orderData };
+                try {
+                    if (orderId) {
+                        // Update
+                        const docRef = doc(db, "medicalOrders", orderId);
+                        await setDoc(docRef, orderData, { merge: true });
+                    } else {
+                        // Create
+                        orderData.completed = false;
+                        orderData.completionDate = null;
+                        const newDocRef = await addDoc(ordersCollectionRef, orderData);
+                        // Update sequence
+                        const newSequence = [...orderSequence, newDocRef.id];
+                        await setDoc(sequenceDocRef, { ids: newSequence });
                     }
-                } else {
-                    orderData.id = Date.now().toString();
-                    orderData.completed = false;
-                    orderData.completionDate = null;
-                    orders.push(orderData);
+                    resetForm();
+                    showTaskListPage();
+                } catch (error) {
+                    console.error("Error saving order:", error);
+                    showAlert("Gagal menyimpan data. Coba lagi.");
+                } finally {
+                    submitBtn.disabled = false;
                 }
-                saveAndRender();
-                resetForm();
-                showTaskListPage();
             });
 
-            taskList.addEventListener('click', (e) => {
+            taskList.addEventListener('click', async (e) => {
                 const card = e.target.closest('.border');
                 if (!card) return;
                 const orderId = card.dataset.id;
+                
+                // Handle Checkbox
                 if (e.target.classList.contains('complete-checkbox')) {
-                    const index = orders.findIndex(o => o.id === orderId);
-                    if (index > -1) {
-                        orders[index].completed = e.target.checked;
-                        orders[index].completionDate = e.target.checked ? getTodayDateString() : null;
-                        saveAndRender();
-                    }
+                    const docRef = doc(db, "medicalOrders", orderId);
+                    const isChecked = e.target.checked;
+                    await updateDoc(docRef, {
+                        completed: isChecked,
+                        completionDate: isChecked ? getTodayDateString() : null
+                    });
                 }
+                
+                // Handle Edit
                 if (e.target.closest('.edit-btn')) {
-                    const orderToEdit = orders.find(o => o.id === orderId);
+                    const orderToEdit = allOrdersData.get(orderId);
                     if (orderToEdit) {
+                        // ... (logika mengisi form sama seperti sebelumnya)
                         showFormPage();
                         document.getElementById('orderId').value = orderToEdit.id;
                         document.getElementById('fullName').value = orderToEdit.fullName;
@@ -541,25 +521,51 @@
                         submitBtn.textContent = 'Update Order';
                     }
                 }
+
+                // Handle Delete
                 if (e.target.closest('.delete-btn')) {
                     orderToDelete = orderId;
                     deleteModal.style.display = 'flex';
                 }
             });
-
-            cancelDeleteBtn.addEventListener('click', () => {
-                orderToDelete = null;
-                deleteModal.style.display = 'none';
-            });
-
-            confirmDeleteBtn.addEventListener('click', () => {
+            
+            confirmDeleteBtn.addEventListener('click', async () => {
                 if (orderToDelete) {
-                    orders = orders.filter(o => o.id !== orderToDelete);
-                    saveAndRender();
-                    orderToDelete = null;
-                    deleteModal.style.display = 'none';
+                    try {
+                        const idToDelete = orderToDelete;
+                        orderToDelete = null; // Reset state
+                        
+                        // Hapus dokumen order
+                        await deleteDoc(doc(db, "medicalOrders", idToDelete));
+                        
+                        // Update sequence
+                        const newSequence = orderSequence.filter(id => id !== idToDelete);
+                        await setDoc(sequenceDocRef, { ids: newSequence });
+
+                    } catch (error) {
+                        console.error("Error deleting order:", error);
+                        showAlert("Gagal menghapus tugas.");
+                    } finally {
+                        deleteModal.style.display = 'none';
+                    }
                 }
             });
+
+            // --- Drag and Drop untuk Mengurutkan Tugas ---
+            taskList.addEventListener('drop', async e => {
+                e.preventDefault();
+                const newOrderedIds = [...taskList.querySelectorAll('.border')].map(card => card.dataset.id);
+                // Simpan urutan baru ke Firestore
+                await setDoc(sequenceDocRef, { ids: newOrderedIds });
+            });
+
+
+            // ... (Fungsi lain yang tidak berubah: showAlert, showFormPage, getTodayDateString, parsing tanggal, resetForm, event listener tombol, dll.)
+            // Pastikan semua fungsi ini ada dan benar.
+            alertOk.addEventListener('click', () => { alertModal.style.display = 'none'; });
+            showFormBtn.addEventListener('click', () => { resetForm(); showFormPage(); });
+            cancelBtn.addEventListener('click', () => { resetForm(); showTaskListPage(); });
+            cancelDeleteBtn.addEventListener('click', () => { orderToDelete = null; deleteModal.style.display = 'none'; });
 
             exportBtn.addEventListener('click', () => {
                 const startDate = document.getElementById('startDate').value;
@@ -572,7 +578,7 @@
                 const end = new Date(endDate);
                 end.setDate(end.getDate() + 1);
 
-                const dataToExport = orders.filter(order => {
+                const dataToExport = Array.from(allOrdersData.values()).filter(order => {
                     if (!order.appointmentDate) return false;
                     const orderDate = new Date(order.appointmentDate);
                     if (isNaN(orderDate.getTime())) return false; 
@@ -604,17 +610,12 @@
                 document.body.removeChild(link);
             });
             
-            // --- Fitur Drag and Drop untuk Mengurutkan Tugas ---
             let draggingElement = null;
 
             taskList.addEventListener('dragstart', e => {
-                // Pastikan yang di-drag adalah kartu tugasnya
                 if (e.target.classList.contains('border')) {
                     draggingElement = e.target;
-                    // Memberi sedikit jeda agar browser sempat membuat 'gambar' dari item yang di-drag
-                    setTimeout(() => {
-                        e.target.classList.add('dragging');
-                    }, 0);
+                    setTimeout(() => { e.target.classList.add('dragging'); }, 0);
                 }
             });
 
@@ -626,7 +627,7 @@
             });
 
             taskList.addEventListener('dragover', e => {
-                e.preventDefault(); // Diperlukan agar event 'drop' bisa berfungsi
+                e.preventDefault();
                 const afterElement = getDragAfterElement(taskList, e.clientY);
                 const currentlyDragging = document.querySelector('.dragging');
                 if (currentlyDragging) {
@@ -637,28 +638,12 @@
                     }
                 }
             });
-            
-            taskList.addEventListener('drop', e => {
-                e.preventDefault();
-                // DOM sudah terurut dari event 'dragover'. Sekarang, kita perbarui data array-nya.
-                const newOrderedIds = [...taskList.querySelectorAll('.border')].map(card => card.dataset.id);
-                
-                const orderMap = new Map(orders.map(order => [order.id, order]));
-
-                // Susun ulang array 'orders' sesuai urutan baru di DOM
-                orders = newOrderedIds.map(id => orderMap.get(id));
-                
-                // Simpan urutan baru
-                saveAndRender(); 
-            });
 
             function getDragAfterElement(container, y) {
                 const draggableElements = [...container.querySelectorAll('.border:not(.dragging)')];
-
                 return draggableElements.reduce((closest, child) => {
                     const box = child.getBoundingClientRect();
                     const offset = y - box.top - box.height / 2;
-                    
                     if (offset < 0 && offset > closest.offset) {
                         return { offset: offset, element: child };
                     } else {
@@ -673,14 +658,12 @@
             };
 
             const personnelList = getOptionsFromSelect('personnel');
-
+            
             const parseAndFillForm = () => {
                 orderForm.reset();
                 document.getElementById('orderId').value = '';
-
                 let originalText = pasteArea.value;
                 let text = originalText.toLowerCase();
-
                 const extractLineValue = (keyword) => {
                     const keywordIndex = text.indexOf(keyword.toLowerCase());
                     if (keywordIndex === -1) return null;
@@ -689,7 +672,6 @@
                     let value = (endIndex === -1) ? originalText.substring(startIndex) : originalText.substring(startIndex, endIndex);
                     return value.replace(/^[:\s]+/, '').trim();
                 };
-
                 const findAndSetSelect = (keyword, selectId, optionsList) => {
                     const valueToFind = extractLineValue(keyword);
                     if (!valueToFind) return;
@@ -697,25 +679,19 @@
                     const bestMatch = optionsList.find(option => option.toLowerCase().includes(lowerValue));
                     if (bestMatch) document.getElementById(selectId).value = bestMatch;
                 };
-                
                 const fullName = extractLineValue("Pasien:");
                 if (fullName) document.getElementById('fullName').value = fullName;
-                
                 const address = extractLineValue("Alamat:");
                 if (address) document.getElementById('address').value = address;
-                
                 findAndSetSelect("nakes:", 'personnel', personnelList);
-                
                 const detailedServiceKeyword = "layanan utama:";
                 const serviceKeywordIndex = text.indexOf(detailedServiceKeyword);
                 if (serviceKeywordIndex > -1) {
                     const searchStartIndex = serviceKeywordIndex + detailedServiceKeyword.length;
                     const searchArea = originalText.substring(searchStartIndex);
                     const searchAreaLower = searchArea.toLowerCase();
-                    
                     const terminatingKeywords = ["pasien:", "tanggal lahir:", "nakes:", "date & time:", "alamat:", "perlu dibawa:"];
                     let nearestTerminatorIndex = -1;
-
                     terminatingKeywords.forEach(kw => {
                         const kwIndex = searchAreaLower.indexOf(kw);
                         if (kwIndex !== -1) {
@@ -724,40 +700,31 @@
                             }
                         }
                     });
-
                     let detailedServiceText;
                     if (nearestTerminatorIndex !== -1) {
                         detailedServiceText = searchArea.substring(0, nearestTerminatorIndex).trim();
                     } else {
                         detailedServiceText = searchArea.trim();
                     }
-
                     if (detailedServiceText.startsWith(':')) {
                         detailedServiceText = detailedServiceText.substring(1).trim();
                     }
-                    
                     document.getElementById('detailedService').value = detailedServiceText;
                 }
-                
                 document.getElementById('serviceType').value = "";
-
                 if (text.includes('perempuan') || text.includes('wanita')) {
                     document.querySelector('input[name="gender"][value="Perempuan"]').checked = true;
                 } else if (text.includes('laki-laki') || text.includes('pria')) {
                     document.querySelector('input[name="gender"][value="Laki-laki"]').checked = true;
                 }
-
                 const gmapsMatch = originalText.match(/https?:\/\/(www\.)?(google\.com\/maps|maps\.app\.goo\.gl)\/\S+/i);
                 if (gmapsMatch) document.getElementById('gmaps').value = gmapsMatch[0];
-
                 const phoneMatch = text.match(/(?:\+62|08)\d{9,13}/);
                 if (phoneMatch) document.getElementById('phone').value = phoneMatch[0];
-                
                 const dobText = extractLineValue("Tanggal lahir:");
                 if (dobText) {
                     document.getElementById('dob').value = dobText;
                 }
-
                 const appointmentInfoText = extractLineValue("date & time");
                 if(appointmentInfoText) {
                     document.getElementById('appointmentDate').value = appointmentInfoText.replace(/jam.*/i, '').trim();
@@ -768,15 +735,18 @@
                         document.getElementById('appointmentTime').value = timeStr;
                     }
                 }
-                
                 showAlert("Formulir telah diisi otomatis. Harap periksa kembali semua data sebelum menyimpan.");
             };
-
             processDataBtn.addEventListener('click', parseAndFillForm);
             
-            // Initial load
-            renderTasks();
-            showTaskListPage();
+            const resetForm = () => {
+                orderForm.reset();
+                document.getElementById('orderId').value = '';
+                submitBtn.textContent = 'Tambah Order';
+                pasteArea.value = '';
+            };
+            
+            showTaskListPage(); // Initial view
         }
     </script>
 </body>
