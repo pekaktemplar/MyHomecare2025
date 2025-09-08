@@ -68,7 +68,7 @@
             <div class="flex flex-col md:flex-row justify-between items-center">
                  <div class="text-center md:text-left">
                     <h1 class="text-3xl md:text-4xl font-bold text-slate-800">Dashboard Penugasan Medis</h1>
-                    <p class="text-slate-500 mt-2">Fullerton Health Clinic untuk Layanan Halodoc | <span class="font-semibold text-green-600">v1.1 Cloud Sync</span></p>
+                    <p class="text-slate-500 mt-2">Fullerton Health Clinic untuk Layanan Halodoc | <span class="font-semibold text-green-600">v1.2 Cloud Sync (Popup)</span></p>
                 </div>
                 <div id="userInfo" class="text-center md:text-right mt-4 md:mt-0">
                     <p class="text-sm text-slate-600" id="userEmail"></p>
@@ -238,9 +238,10 @@
     <script type="module">
         // Import the functions you need from the SDKs you need
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-        import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
+        // Diubah kembali ke signInWithPopup
+        import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
         // Import Firestore SDK
-        import { getFirestore, collection, doc, onSnapshot, addDoc, setDoc, deleteDoc, updateDoc, writeBatch, runTransaction } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+        import { getFirestore, collection, doc, onSnapshot, addDoc, setDoc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
       
         // =========================================================================================
         // PLACEHOLDER 1: KONFIGURASI FIREBASE
@@ -295,13 +296,28 @@
             initializeAppLogic(); // Jalankan logika aplikasi utama
         };
         
-        // Handle Login - Menggunakan redirect
-        loginBtn.addEventListener('click', () => {
-            console.log("Login button clicked. Initiating redirect...");
-            authMessage.textContent = "Mengarahkan ke halaman login Google...";
+        // Handle Login - Menggunakan popup
+        loginBtn.addEventListener('click', async () => {
+            authMessage.textContent = "";
             loginBtn.disabled = true;
             loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Memproses...';
-            signInWithRedirect(auth, provider);
+            
+            try {
+                // signInWithPopup akan membuka jendela baru.
+                // onAuthStateChanged akan menangani hasilnya jika berhasil.
+                await signInWithPopup(auth, provider);
+            } catch (error) {
+                // Menangani error jika popup ditutup atau gagal.
+                if (error.code === 'auth/popup-closed-by-user') {
+                    authMessage.textContent = 'Jendela login ditutup.';
+                } else {
+                    authMessage.textContent = `Login gagal: ${error.message}`;
+                }
+                console.error("Popup Error:", error);
+                // Kembalikan tombol ke keadaan semula
+                loginBtn.disabled = false;
+                loginBtn.innerHTML = '<i class="fab fa-google mr-2"></i> Login dengan Google';
+            }
         });
 
         // Handle Logout
@@ -309,12 +325,8 @@
             signOut(auth);
         });
         
-        getRedirectResult(auth)
-            .catch((error) => {
-                console.error("Redirect Error:", error);
-                authMessage.textContent = `Login gagal: ${error.message}`;
-            });
-
+        // Hapus getRedirectResult karena tidak lagi digunakan
+        
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 if (authorizedEmails.includes(user.email)) {
@@ -324,9 +336,7 @@
                     showLoginPage('Akses ditolak. Akun Anda tidak terdaftar.');
                 }
             } else {
-                if(!authMessage.textContent.startsWith('Login gagal')) {
-                   showLoginPage();
-                }
+                showLoginPage();
             }
         });
 
@@ -377,6 +387,33 @@
                 orderSequence = doc.exists() ? doc.data().ids : [];
                 renderTasks(); // Render ulang setiap kali urutan berubah
             });
+
+            const getTodayDateString = () => {
+                const today = new Date();
+                const year = today.getFullYear();
+                const month = String(today.getMonth() + 1).padStart(2, '0');
+                const day = String(today.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            };
+
+            const parseStringToYYYYMMDD = (dateString) => {
+                if (!dateString) return '';
+                const parts = dateString.trim().match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+                if (!parts) return dateString; 
+                const day = parts[1].padStart(2, '0');
+                const month = parts[2].padStart(2, '0');
+                const year = parts[3];
+                if (parseInt(month, 10) > 12 || parseInt(day, 10) > 31) return dateString;
+                return `${year}-${month}-${day}`;
+            };
+
+            const formatYYYYMMDDtoDDMMYYYY = (dateString) => {
+                if (!dateString || !dateString.includes('-')) return dateString;
+                const parts = dateString.split('-');
+                if (parts.length !== 3) return dateString;
+                const [year, month, day] = parts;
+                return `${day}/${month}/${year}`;
+            };
 
             const renderTasks = () => {
                 taskList.innerHTML = '';
@@ -560,8 +597,19 @@
             });
 
 
-            // ... (Fungsi lain yang tidak berubah: showAlert, showFormPage, getTodayDateString, parsing tanggal, resetForm, event listener tombol, dll.)
-            // Pastikan semua fungsi ini ada dan benar.
+            const showAlert = (message) => {
+                alertMessage.textContent = message;
+                alertModal.style.display = 'flex';
+            };
+            const showFormPage = () => {
+                taskListPage.classList.add('hidden');
+                formPage.classList.remove('hidden');
+            };
+            const showTaskListPage = () => {
+                formPage.classList.add('hidden');
+                taskListPage.classList.remove('hidden');
+            };
+
             alertOk.addEventListener('click', () => { alertModal.style.display = 'none'; });
             showFormBtn.addEventListener('click', () => { resetForm(); showFormPage(); });
             cancelBtn.addEventListener('click', () => { resetForm(); showTaskListPage(); });
