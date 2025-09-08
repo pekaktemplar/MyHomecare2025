@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manajemen Penugasan Medis - Fullerton Health & Halodoc</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+        .task-completed {
+            text-decoration: line-through;
+            color: #9ca3af;
+        }
+        .task-completed .info-text {
+            color: #9ca3af;
+        }
+        .modal-backdrop, .alert-backdrop {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 40;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content, .alert-content {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 0.5rem;
+            max-width: 500px;
+            width: 90%;
+            z-index: 50;
+        }
+        .hidden {
+            display: none;
+        }
+        .dragging {
+            opacity: 0.4;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <!-- Halaman Login -->
+    <div id="loginPage" class="max-w-md mx-auto mt-10 md:mt-20">
+        <div class="bg-white p-8 rounded-lg shadow-md text-center">
+            <h1 class="text-2xl font-bold text-slate-800">Selamat Datang</h1>
+            <p class="text-slate-500 mt-2 mb-6">Silakan login untuk mengakses Dashboard Penugasan.</p>
+            <button id="loginBtn" class="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 flex items-center justify-center">
+                <i class="fab fa-google mr-2"></i> Login dengan Google
+            </button>
+            <p id="authMessage" class="mt-4 text-sm text-red-600"></p>
+        </div>
+    </div>
+
+    <!-- Konten Aplikasi Utama (Hidden by default) -->
+    <div id="mainApp" class="max-w-4xl mx-auto hidden">
+        <!-- Header -->
+        <header class="mb-8">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                 <div class="text-center md:text-left">
+                    <h1 class="text-3xl md:text-4xl font-bold text-slate-800">Dashboard Penugasan Medis</h1>
+                    <p class="text-slate-500 mt-2">Fullerton Health Clinic untuk Layanan Halodoc | <span class="font-semibold text-green-600">v1.0 Stabil</span></p>
+                </div>
+                <div id="userInfo" class="text-center md:text-right mt-4 md:mt-0">
+                    <p class="text-sm text-slate-600" id="userEmail"></p>
+                    <button id="logoutBtn" class="text-sm text-red-500 hover:underline">Logout</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Halaman Input Form -->
+        <div id="formPage" class="hidden">
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                 <!-- Fitur Auto-fill -->
+                <div class="mb-6 bg-slate-50 p-4 rounded-lg border border-slate-200">
+                    <label for="pasteArea" class="block text-sm font-medium text-slate-700">Paste Data Mentah di Sini</label>
+                    <p class="text-xs text-slate-500 mt-1 mb-2">Tempelkan teks dari WhatsApp atau sumber lain, lalu klik "Proses Data" untuk mengisi formulir secara otomatis.</p>
+                    <textarea id="pasteArea" rows="6" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="Contoh: &#10;Pasien: Budi Santoso&#10;Tanggal lahir: 15/08/1990&#10;nakes: Ns. Dewi&#10;Layanan Utama: Vitamin C Injection&#10;date & Time: 25/12/2024 jam 14:00&#10;Alamat: Jl. Pahlawan No. 123, Denpasar"></textarea>
+                    <button type="button" id="processDataBtn" class="mt-2 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-teal-600 hover:bg-teal-700">
+                        <i class="fas fa-magic-wand-sparkles mr-2"></i>Proses Data
+                    </button>
+                </div>
+                <hr class="my-6">
+                
+                <h2 class="text-xl font-semibold mb-4 text-slate-700">Formulir Order Layanan</h2>
+                <form id="orderForm" class="space-y-4">
+                    <input type="hidden" id="orderId">
+                    <div>
+                        <label for="fullName" class="block text-sm font-medium text-slate-600">Nama Lengkap</label>
+                        <input type="text" id="fullName" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600">Jenis Kelamin</label>
+                        <div class="mt-2 flex space-x-4">
+                            <label class="inline-flex items-center"><input type="radio" name="gender" value="Laki-laki" class="form-radio text-indigo-600" required> <span class="ml-2">Laki-laki</span></label>
+                            <label class="inline-flex items-center"><input type="radio" name="gender" value="Perempuan" class="form-radio text-indigo-600"> <span class="ml-2">Perempuan</span></label>
+                        </div>
+                    </div>
+                    <div>
+                        <label for="dob" class="block text-sm font-medium text-slate-600">Tanggal Lahir</label>
+                        <input type="text" id="dob" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="Contoh: 15/08/1990" required>
+                    </div>
+                    <div>
+                        <label for="phone" class="block text-sm font-medium text-slate-600">Nomor Telepon</label>
+                        <input type="tel" id="phone" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" required>
+                    </div>
+                    <div>
+                        <label for="address" class="block text-sm font-medium text-slate-600">Alamat</label>
+                        <textarea id="address" rows="3" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" required></textarea>
+                    </div>
+                    <div>
+                        <label for="gmaps" class="block text-sm font-medium text-slate-600">Lokasi Google Maps (URL)</label>
+                        <input type="url" id="gmaps" placeholder="https://maps.app.goo.gl/..." class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label for="appointmentDate" class="block text-sm font-medium text-slate-600">Tgl. Kunjungan</label>
+                            <input type="text" id="appointmentDate" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="Contoh: 25/12/2024" required>
+                        </div>
+                        <div>
+                            <label for="appointmentTime" class="block text-sm font-medium text-slate-600">Waktu Kunjungan</label>
+                            <input type="time" id="appointmentTime" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" required>
+                        </div>
+                    </div>
+                     <div>
+                        <label for="serviceType" class="block text-sm font-medium text-slate-600">Jenis Layanan</label>
+                        <select id="serviceType" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" required>
+                            <option value="">Pilih Jenis Layanan</option>
+                            <option>Laboratory</option>
+                            <option>Nurse Services</option>
+                            <option>Doctor Services</option>
+                            <option>Doctor and Nurse Services</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="personnel" class="block text-sm font-medium text-slate-600">Tenaga Medis</label>
+                        <select id="personnel" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" required>
+                            <option value="">Pilih Tenaga Medis</option>
+                            <option>dr. Ida Ayu Pradnya Paramitha</option>
+                            <option>dr. Agus Budiartha</option>
+                            <option>Ns. Deliana</option>
+                            <option>Ns. Ari Wahyu</option>
+                            <option>Ns. Dewi</option>
+                            <option>ATLM Esa Ariani</option>
+                            <option>ATLM Ida Ayu Oka G</option>
+                            <option>ATLM Siwi</option>
+                        </select>
+                    </div>
+                     <div>
+                        <label for="detailedService" class="block text-sm font-medium text-slate-600">Layanan Detail</label>
+                        <input type="text" id="detailedService" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" required>
+                    </div>
+                    <div class="flex justify-end space-x-2 pt-2">
+                        <button type="button" id="cancelBtn" class="py-2 px-4 border border-slate-300 rounded-md shadow-sm text-sm font-medium text-slate-700 bg-white hover:bg-slate-50">Kembali</button>
+                        <button type="submit" id="submitBtn" class="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">Tambah Order</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Halaman Daftar Tugas -->
+        <div id="taskListPage">
+           <div class="bg-white p-6 rounded-lg shadow-md">
+                 <div class="flex flex-col sm:flex-row justify-between sm:items-center mb-4">
+                    <h2 class="text-xl font-semibold text-slate-700">Daftar Penugasan Aktif</h2>
+                    <button id="showFormBtn" class="mt-3 sm:mt-0 w-full sm:w-auto py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">
+                        <i class="fas fa-plus mr-2"></i>Buat Order Baru
+                    </button>
+                </div>
+                
+                <div class="bg-slate-50 p-4 rounded-md mb-4 flex flex-col sm:flex-row items-center gap-4">
+                    <p class="text-sm font-medium text-slate-600 flex-shrink-0">Ekspor Data:</p>
+                    <div class="flex-grow grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+                         <div>
+                            <label for="startDate" class="block text-xs text-slate-500">Dari Tanggal</label>
+                            <input type="date" id="startDate" class="mt-1 block w-full text-sm rounded-md border-slate-300 shadow-sm">
+                        </div>
+                        <div>
+                            <label for="endDate" class="block text-xs text-slate-500">Sampai Tanggal</label>
+                            <input type="date" id="endDate" class="mt-1 block w-full text-sm rounded-md border-slate-300 shadow-sm">
+                        </div>
+                    </div>
+                    <button id="exportBtn" class="w-full sm:w-auto mt-2 sm:mt-0 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700">
+                        <i class="fas fa-file-csv mr-2"></i>Ekspor
+                    </button>
+                </div>
+
+                <div id="taskList" class="space-y-4">
+                </div>
+                 <p id="emptyMessage" class="text-center text-slate-500 py-8">Belum ada penugasan aktif.</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal for Deletion Confirmation -->
+    <div id="deleteModal" class="modal-backdrop">
+        <div class="modal-content">
+            <h3 class="text-lg font-medium leading-6 text-gray-900">Konfirmasi Hapus</h3>
+            <div class="mt-2">
+                <p class="text-sm text-gray-500">Apakah Anda yakin ingin menghapus tugas ini secara permanen?</p>
+            </div>
+            <div class="mt-4 flex justify-end space-x-2">
+                <button type="button" id="cancelDelete" class="py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                    Batal
+                </button>
+                <button type="button" id="confirmDelete" class="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700">
+                    Hapus
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Alert Modal -->
+    <div id="alertModal" class="alert-backdrop">
+        <div class="alert-content">
+            <h3 id="alertTitle" class="text-lg font-medium leading-6 text-gray-900">Pemberitahuan</h3>
+            <div class="mt-2">
+                <p id="alertMessage" class="text-sm text-gray-500"></p>
+            </div>
+            <div class="mt-4 flex justify-end">
+                <button type="button" id="alertOk" class="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">
+                    OK
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        // Import the functions you need from the SDKs you need
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.19.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/9.19.1/firebase-auth.js";
+      
+        // =========================================================================================
+        // PLACEHOLDER 1: KONFIGURASI FIREBASE
+        // TODO: Ganti dengan konfigurasi Firebase project Anda.
+        // Anda bisa mendapatkannya dari Firebase Console: Project settings > General.
+        // =========================================================================================
+        const firebaseConfig = {
+          apiKey: "AIzaSyCJt31PhT_zpVUiWSl9bc3yES0YO6maGAI",
+          authDomain: "myhomecare-e9ead.firebaseapp.com",
+          projectId: "myhomecare-e9ead",
+          storageBucket: "myhomecare-e9ead.firebasestorage.app",
+          messagingSenderId: "527860094564",
+          appId: "1:527860094564:web:960e79ed407e05d9983171"
+        };
+
+        // =========================================================================================
+        // PLACEHOLDER 2: DAFTAR EMAIL YANG DIIZINKAN
+        // TODO: Masukkan daftar alamat email (Gmail) yang boleh mengakses aplikasi ini.
+        // =========================================================================================
+        const authorizedEmails = [
+            "pekaktemplar@gmail.com",
+            "nurse.tmcbali@gmail.com",
+            "fhclab1@gmail.com",
+            "iaparamitha5@gmail.com"
+        ];
+        
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const provider = new GoogleAuthProvider();
+
+        const loginPage = document.getElementById('loginPage');
+        const mainApp = document.getElementById('mainApp');
+        const loginBtn = document.getElementById('loginBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const authMessage = document.getElementById('authMessage');
+        const userEmailEl = document.getElementById('userEmail');
+
+        const showLoginPage = (message = '') => {
+            mainApp.classList.add('hidden');
+            loginPage.classList.remove('hidden');
+            authMessage.textContent = message;
+        };
+
+        const showMainApp = (user) => {
+            loginPage.classList.add('hidden');
+            mainApp.classList.remove('hidden');
+            userEmailEl.textContent = `Login sebagai: ${user.email}`;
+            initializeAppLogic(); // Jalankan logika aplikasi utama
+        };
+        
+        // Handle Login
+        loginBtn.addEventListener('click', () => {
+            signInWithPopup(auth, provider)
+                .catch((error) => {
+                    console.error("Login Error:", error);
+                    authMessage.textContent = `Login gagal: ${error.message}`;
+                });
+        });
+
+        // Handle Logout
+        logoutBtn.addEventListener('click', () => {
+            signOut(auth);
+        });
+
+        // Listen for authentication state changes
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                // User is signed in.
+                if (authorizedEmails.includes(user.email)) {
+                    // User is authorized.
+                    showMainApp(user);
+                } else {
+                    // User is not authorized.
+                    signOut(auth);
+                    showLoginPage('Akses ditolak. Akun Anda tidak terdaftar.');
+                }
+            } else {
+                // User is signed out.
+                showLoginPage();
+            }
+        });
+
+        // =========================================================================================
+        // LOGIKA APLIKASI UTAMA
+        // Semua fungsionalitas aplikasi (form, daftar tugas, dll.) diletakkan di sini.
+        // Fungsi ini hanya akan dipanggil setelah login berhasil dan terotorisasi.
+        // =========================================================================================
+        function initializeAppLogic() {
+            const orderForm = document.getElementById('orderForm');
+            const taskList = document.getElementById('taskList');
+            const emptyMessage = document.getElementById('emptyMessage');
+            const submitBtn = document.getElementById('submitBtn');
+            const cancelBtn = document.getElementById('cancelBtn');
+            const exportBtn = document.getElementById('exportBtn');
+            const deleteModal = document.getElementById('deleteModal');
+            const cancelDeleteBtn = document.getElementById('cancelDelete');
+            const confirmDeleteBtn = document.getElementById('confirmDelete');
+            const formPage = document.getElementById('formPage');
+            const taskListPage = document.getElementById('taskListPage');
+            const showFormBtn = document.getElementById('showFormBtn');
+            const pasteArea = document.getElementById('pasteArea');
+            const processDataBtn = document.getElementById('processDataBtn');
+            const alertModal = document.getElementById('alertModal');
+            const alertMessage = document.getElementById('alertMessage');
+            const alertOk = document.getElementById('alertOk');
+
+            let orders = JSON.parse(localStorage.getItem('medicalOrders')) || [];
+            let orderToDelete = null;
+
+            const showAlert = (message) => {
+                alertMessage.textContent = message;
+                alertModal.style.display = 'flex';
+            };
+            alertOk.addEventListener('click', () => {
+                alertModal.style.display = 'none';
+            });
+
+            const showFormPage = () => {
+                taskListPage.classList.add('hidden');
+                formPage.classList.remove('hidden');
+            };
+            const showTaskListPage = () => {
+                formPage.classList.add('hidden');
+                taskListPage.classList.remove('hidden');
+            };
+
+            const getTodayDateString = () => {
+                const today = new Date();
+                const year = today.getFullYear();
+                const month = String(today.getMonth() + 1).padStart(2, '0');
+                const day = String(today.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            };
+
+            const parseStringToYYYYMMDD = (dateString) => {
+                if (!dateString) return '';
+                const parts = dateString.trim().match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+                if (!parts) return dateString; 
+                const day = parts[1].padStart(2, '0');
+                const month = parts[2].padStart(2, '0');
+                const year = parts[3];
+                if (parseInt(month, 10) > 12 || parseInt(day, 10) > 31) return dateString;
+                return `${year}-${month}-${day}`;
+            };
+
+            const formatYYYYMMDDtoDDMMYYYY = (dateString) => {
+                if (!dateString || !dateString.includes('-')) return dateString;
+                const parts = dateString.split('-');
+                if (parts.length !== 3) return dateString;
+                const [year, month, day] = parts;
+                return `${day}/${month}/${year}`;
+            };
+
+
+            const renderTasks = () => {
+                taskList.innerHTML = '';
+                const todayStr = getTodayDateString();
+                const activeOrders = orders.filter(order => !order.completed || order.completionDate === todayStr);
+
+                if (activeOrders.length === 0) {
+                    emptyMessage.style.display = 'block';
+                } else {
+                    emptyMessage.style.display = 'none';
+                    // NOTE: Pengurutan otomatis berdasarkan tanggal dihapus untuk mengaktifkan pengurutan manual (drag & drop).
+                    // Urutan kini akan sesuai dengan yang disimpan di localStorage.
+                    activeOrders.forEach(order => {
+                        const orderCard = document.createElement('div');
+                        orderCard.className = `p-4 border rounded-lg shadow-sm transition-all ${order.completed ? 'bg-slate-100' : 'bg-white'}`;
+                        orderCard.dataset.id = order.id;
+                        orderCard.draggable = true; // Membuat kartu dapat di-drag
+
+                        if (order.completed) orderCard.classList.add('task-completed');
+                        
+                        // Safely format dates, handle invalid dates
+                        const appointmentDateFormatted = order.appointmentDate ? new Date(order.appointmentDate).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'Tanggal tidak valid';
+                        const dobFormatted = order.dob ? new Date(order.dob).toLocaleDateString('id-ID') : 'Tanggal tidak valid';
+
+                        orderCard.innerHTML = `
+                            <div class="flex flex-col sm:flex-row justify-between sm:items-start">
+                                <div>
+                                    <div class="flex items-center gap-3">
+                                        <input type="checkbox" class="h-5 w-5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer complete-checkbox" ${order.completed ? 'checked' : ''}>
+                                        <h3 class="font-bold text-lg ${order.completed ? '' : 'text-slate-800'}">${order.fullName}</h3>
+                                    </div>
+                                    <p class="text-sm text-slate-500 mt-1 info-text">
+                                        <i class="fas fa-calendar-alt mr-1"></i> ${appointmentDateFormatted}
+                                        <span class="mx-2">|</span>
+                                        <i class="fas fa-clock mr-1"></i> ${order.appointmentTime}
+                                    </p>
+                                </div>
+                                <div class="flex items-center space-x-2 mt-3 sm:mt-0 flex-shrink-0">
+                                    <button class="edit-btn text-blue-500 hover:text-blue-700 p-2"><i class="fas fa-edit"></i></button>
+                                    <button class="delete-btn text-red-500 hover:text-red-700 p-2"><i class="fas fa-trash"></i></button>
+                                </div>
+                            </div>
+                            <div class="mt-4 border-t pt-4 space-y-2">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                                    <p class="info-text"><strong class="font-medium text-slate-600">Jenis Kelamin:</strong> ${order.gender}</p>
+                                    <p class="info-text"><strong class="font-medium text-slate-600">Tgl Lahir:</strong> ${dobFormatted}</p>
+                                    <p class="info-text md:col-span-2"><strong class="font-medium text-slate-600">No. Telepon:</strong> ${order.phone}</p>
+                                </div>
+                                <p class="text-sm info-text pt-2 border-t mt-2"><strong class="font-medium text-slate-600">Petugas:</strong> ${order.personnel}</p>
+                                <p class="text-sm info-text"><strong class="font-medium text-slate-600">Layanan:</strong> ${order.serviceType} - ${order.detailedService}</p>
+                                <p class="text-sm info-text"><strong class="font-medium text-slate-600">Alamat:</strong> ${order.address}</p>
+                                ${order.gmaps ? `<p class="text-sm info-text"><strong class="font-medium text-slate-600">Lokasi:</strong> <a href="${order.gmaps}" target="_blank" class="text-indigo-600 hover:underline">Buka di Google Maps</a></p>` : ''}
+                            </div>
+                        `;
+                        taskList.appendChild(orderCard);
+                    });
+                }
+            };
+
+            const saveAndRender = () => {
+                localStorage.setItem('medicalOrders', JSON.stringify(orders));
+                renderTasks();
+            };
+            
+            const resetForm = () => {
+                orderForm.reset();
+                document.getElementById('orderId').value = '';
+                submitBtn.textContent = 'Tambah Order';
+                document.getElementById('pasteArea').value = ''; // Mengosongkan area paste
+            };
+
+            showFormBtn.addEventListener('click', () => {
+                resetForm();
+                showFormPage();
+            });
+
+            cancelBtn.addEventListener('click', () => {
+                resetForm();
+                showTaskListPage();
+            });
+
+            orderForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const orderId = document.getElementById('orderId').value;
+                const dobValue = document.getElementById('dob').value;
+                const appointmentDateValue = document.getElementById('appointmentDate').value;
+
+                const orderData = {
+                    fullName: document.getElementById('fullName').value,
+                    gender: document.querySelector('input[name="gender"]:checked').value,
+                    dob: parseStringToYYYYMMDD(dobValue),
+                    phone: document.getElementById('phone').value,
+                    address: document.getElementById('address').value,
+                    gmaps: document.getElementById('gmaps').value,
+                    appointmentDate: parseStringToYYYYMMDD(appointmentDateValue),
+                    appointmentTime: document.getElementById('appointmentTime').value,
+                    serviceType: document.getElementById('serviceType').value,
+                    personnel: document.getElementById('personnel').value,
+                    detailedService: document.getElementById('detailedService').value,
+                };
+
+                if (orderId) {
+                    const index = orders.findIndex(o => o.id === orderId);
+                    if (index > -1) {
+                        orders[index] = { ...orders[index], ...orderData };
+                    }
+                } else {
+                    orderData.id = Date.now().toString();
+                    orderData.completed = false;
+                    orderData.completionDate = null;
+                    orders.push(orderData);
+                }
+                saveAndRender();
+                resetForm();
+                showTaskListPage();
+            });
+
+            taskList.addEventListener('click', (e) => {
+                const card = e.target.closest('.border');
+                if (!card) return;
+                const orderId = card.dataset.id;
+                if (e.target.classList.contains('complete-checkbox')) {
+                    const index = orders.findIndex(o => o.id === orderId);
+                    if (index > -1) {
+                        orders[index].completed = e.target.checked;
+                        orders[index].completionDate = e.target.checked ? getTodayDateString() : null;
+                        saveAndRender();
+                    }
+                }
+                if (e.target.closest('.edit-btn')) {
+                    const orderToEdit = orders.find(o => o.id === orderId);
+                    if (orderToEdit) {
+                        showFormPage();
+                        document.getElementById('orderId').value = orderToEdit.id;
+                        document.getElementById('fullName').value = orderToEdit.fullName;
+                        document.querySelector(`input[name="gender"][value="${orderToEdit.gender}"]`).checked = true;
+                        document.getElementById('dob').value = formatYYYYMMDDtoDDMMYYYY(orderToEdit.dob);
+                        document.getElementById('phone').value = orderToEdit.phone;
+                        document.getElementById('address').value = orderToEdit.address;
+                        document.getElementById('gmaps').value = orderToEdit.gmaps;
+                        document.getElementById('appointmentDate').value = formatYYYYMMDDtoDDMMYYYY(orderToEdit.appointmentDate);
+                        document.getElementById('appointmentTime').value = orderToEdit.appointmentTime;
+                        document.getElementById('serviceType').value = orderToEdit.serviceType;
+                        document.getElementById('personnel').value = orderToEdit.personnel;
+                        document.getElementById('detailedService').value = orderToEdit.detailedService;
+                        submitBtn.textContent = 'Update Order';
+                    }
+                }
+                if (e.target.closest('.delete-btn')) {
+                    orderToDelete = orderId;
+                    deleteModal.style.display = 'flex';
+                }
+            });
+
+            cancelDeleteBtn.addEventListener('click', () => {
+                orderToDelete = null;
+                deleteModal.style.display = 'none';
+            });
+
+            confirmDeleteBtn.addEventListener('click', () => {
+                if (orderToDelete) {
+                    orders = orders.filter(o => o.id !== orderToDelete);
+                    saveAndRender();
+                    orderToDelete = null;
+                    deleteModal.style.display = 'none';
+                }
+            });
+
+            exportBtn.addEventListener('click', () => {
+                const startDate = document.getElementById('startDate').value;
+                const endDate = document.getElementById('endDate').value;
+                if (!startDate || !endDate) {
+                    showAlert("Silakan pilih periode tanggal untuk ekspor.");
+                    return;
+                }
+                const start = new Date(startDate);
+                const end = new Date(endDate);
+                end.setDate(end.getDate() + 1);
+
+                const dataToExport = orders.filter(order => {
+                    if (!order.appointmentDate) return false;
+                    const orderDate = new Date(order.appointmentDate);
+                    if (isNaN(orderDate.getTime())) return false; 
+                    return orderDate >= start && orderDate < end;
+                });
+
+                if (dataToExport.length === 0) {
+                    showAlert("Tidak ada data pada periode yang dipilih.");
+                    return;
+                }
+                let csvContent = "data:text/csv;charset=utf-8,";
+                const headers = ["ID", "Nama Lengkap", "Jenis Kelamin", "Tanggal Lahir", "Telepon", "Alamat", "Gmaps", "Tanggal Kunjungan", "Waktu Kunjungan", "Jenis Layanan", "Tenaga Medis", "Layanan Detail", "Status Selesai", "Tanggal Selesai"];
+                csvContent += headers.join(",") + "\r\n";
+                dataToExport.forEach(order => {
+                    const row = [
+                        order.id, `"${order.fullName}"`, order.gender, order.dob, `'${order.phone}`,
+                        `"${order.address.replace(/"/g, '""')}"`, order.gmaps, order.appointmentDate, order.appointmentTime,
+                        order.serviceType, order.personnel, `"${order.detailedService}"`,
+                        order.completed ? 'Ya' : 'Tidak', order.completionDate || ''
+                    ];
+                    csvContent += row.join(",") + "\r\n";
+                });
+                const encodedUri = encodeURI(csvContent);
+                const link = document.createElement("a");
+                link.setAttribute("href", encodedUri);
+                link.setAttribute("download", `laporan_penugasan_${startDate}_sd_${endDate}.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            });
+            
+            // --- Fitur Drag and Drop untuk Mengurutkan Tugas ---
+            let draggingElement = null;
+
+            taskList.addEventListener('dragstart', e => {
+                // Pastikan yang di-drag adalah kartu tugasnya
+                if (e.target.classList.contains('border')) {
+                    draggingElement = e.target;
+                    // Memberi sedikit jeda agar browser sempat membuat 'gambar' dari item yang di-drag
+                    setTimeout(() => {
+                        e.target.classList.add('dragging');
+                    }, 0);
+                }
+            });
+
+            taskList.addEventListener('dragend', e => {
+                if (draggingElement) {
+                    draggingElement.classList.remove('dragging');
+                    draggingElement = null;
+                }
+            });
+
+            taskList.addEventListener('dragover', e => {
+                e.preventDefault(); // Diperlukan agar event 'drop' bisa berfungsi
+                const afterElement = getDragAfterElement(taskList, e.clientY);
+                const currentlyDragging = document.querySelector('.dragging');
+                if (currentlyDragging) {
+                    if (afterElement == null) {
+                        taskList.appendChild(currentlyDragging);
+                    } else {
+                        taskList.insertBefore(currentlyDragging, afterElement);
+                    }
+                }
+            });
+            
+            taskList.addEventListener('drop', e => {
+                e.preventDefault();
+                // DOM sudah terurut dari event 'dragover'. Sekarang, kita perbarui data array-nya.
+                const newOrderedIds = [...taskList.querySelectorAll('.border')].map(card => card.dataset.id);
+                
+                const orderMap = new Map(orders.map(order => [order.id, order]));
+
+                // Susun ulang array 'orders' sesuai urutan baru di DOM
+                orders = newOrderedIds.map(id => orderMap.get(id));
+                
+                // Simpan urutan baru
+                saveAndRender(); 
+            });
+
+            function getDragAfterElement(container, y) {
+                const draggableElements = [...container.querySelectorAll('.border:not(.dragging)')];
+
+                return draggableElements.reduce((closest, child) => {
+                    const box = child.getBoundingClientRect();
+                    const offset = y - box.top - box.height / 2;
+                    
+                    if (offset < 0 && offset > closest.offset) {
+                        return { offset: offset, element: child };
+                    } else {
+                        return closest;
+                    }
+                }, { offset: Number.NEGATIVE_INFINITY }).element;
+            }
+
+            const getOptionsFromSelect = (selectId) => {
+                return Array.from(document.getElementById(selectId).options)
+                    .map(opt => opt.value).filter(Boolean);
+            };
+
+            const personnelList = getOptionsFromSelect('personnel');
+
+            const parseAndFillForm = () => {
+                orderForm.reset();
+                document.getElementById('orderId').value = '';
+
+                let originalText = pasteArea.value;
+                let text = originalText.toLowerCase();
+
+                const extractLineValue = (keyword) => {
+                    const keywordIndex = text.indexOf(keyword.toLowerCase());
+                    if (keywordIndex === -1) return null;
+                    const startIndex = keywordIndex + keyword.length;
+                    const endIndex = originalText.indexOf('\n', startIndex);
+                    let value = (endIndex === -1) ? originalText.substring(startIndex) : originalText.substring(startIndex, endIndex);
+                    return value.replace(/^[:\s]+/, '').trim();
+                };
+
+                const findAndSetSelect = (keyword, selectId, optionsList) => {
+                    const valueToFind = extractLineValue(keyword);
+                    if (!valueToFind) return;
+                    const lowerValue = valueToFind.toLowerCase();
+                    const bestMatch = optionsList.find(option => option.toLowerCase().includes(lowerValue));
+                    if (bestMatch) document.getElementById(selectId).value = bestMatch;
+                };
+                
+                const fullName = extractLineValue("Pasien:");
+                if (fullName) document.getElementById('fullName').value = fullName;
+                
+                const address = extractLineValue("Alamat:");
+                if (address) document.getElementById('address').value = address;
+                
+                findAndSetSelect("nakes:", 'personnel', personnelList);
+                
+                const detailedServiceKeyword = "layanan utama:";
+                const serviceKeywordIndex = text.indexOf(detailedServiceKeyword);
+                if (serviceKeywordIndex > -1) {
+                    const searchStartIndex = serviceKeywordIndex + detailedServiceKeyword.length;
+                    const searchArea = originalText.substring(searchStartIndex);
+                    const searchAreaLower = searchArea.toLowerCase();
+                    
+                    const terminatingKeywords = ["pasien:", "tanggal lahir:", "nakes:", "date & time:", "alamat:", "perlu dibawa:"];
+                    let nearestTerminatorIndex = -1;
+
+                    terminatingKeywords.forEach(kw => {
+                        const kwIndex = searchAreaLower.indexOf(kw);
+                        if (kwIndex !== -1) {
+                            if (nearestTerminatorIndex === -1 || kwIndex < nearestTerminatorIndex) {
+                                nearestTerminatorIndex = kwIndex;
+                            }
+                        }
+                    });
+
+                    let detailedServiceText;
+                    if (nearestTerminatorIndex !== -1) {
+                        detailedServiceText = searchArea.substring(0, nearestTerminatorIndex).trim();
+                    } else {
+                        detailedServiceText = searchArea.trim();
+                    }
+
+                    if (detailedServiceText.startsWith(':')) {
+                        detailedServiceText = detailedServiceText.substring(1).trim();
+                    }
+                    
+                    document.getElementById('detailedService').value = detailedServiceText;
+                }
+                
+                document.getElementById('serviceType').value = "";
+
+                if (text.includes('perempuan') || text.includes('wanita')) {
+                    document.querySelector('input[name="gender"][value="Perempuan"]').checked = true;
+                } else if (text.includes('laki-laki') || text.includes('pria')) {
+                    document.querySelector('input[name="gender"][value="Laki-laki"]').checked = true;
+                }
+
+                const gmapsMatch = originalText.match(/https?:\/\/(www\.)?(google\.com\/maps|maps\.app\.goo\.gl)\/\S+/i);
+                if (gmapsMatch) document.getElementById('gmaps').value = gmapsMatch[0];
+
+                const phoneMatch = text.match(/(?:\+62|08)\d{9,13}/);
+                if (phoneMatch) document.getElementById('phone').value = phoneMatch[0];
+                
+                const dobText = extractLineValue("Tanggal lahir:");
+                if (dobText) {
+                    document.getElementById('dob').value = dobText;
+                }
+
+                const appointmentInfoText = extractLineValue("date & time");
+                if(appointmentInfoText) {
+                    document.getElementById('appointmentDate').value = appointmentInfoText.replace(/jam.*/i, '').trim();
+                    const timeMatch = appointmentInfoText.match(/(\d{1,2}[:.]\d{2})/);
+                    if (timeMatch) {
+                        let timeStr = timeMatch[0].replace('.', ':');
+                        if (timeStr.length < 5) timeStr = '0' + timeStr;
+                        document.getElementById('appointmentTime').value = timeStr;
+                    }
+                }
+                
+                showAlert("Formulir telah diisi otomatis. Harap periksa kembali semua data sebelum menyimpan.");
+            };
+
+            processDataBtn.addEventListener('click', parseAndFillForm);
+            
+            // Initial load
+            renderTasks();
+            showTaskListPage();
+        }
+    </script>
+</body>
+</html>
+
