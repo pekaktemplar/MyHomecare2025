@@ -253,17 +253,26 @@
         import { getFirestore, collection, doc, onSnapshot, addDoc, setDoc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
       
         // =========================================================================================
-        // PLACEHOLDER 1: KONFIGURASI FIREBASE
-        // TODO: Ganti dengan konfigurasi Firebase project Anda.
+        // =========================================================================================
+        //
+        //                            PERHATIAN: GANTI BAGIAN INI
+        //
+        //  Salin konfigurasi Firebase dari Project Settings > General > Your Apps di Firebase Console
+        //  dan tempelkan di sini untuk menggantikan seluruh blok 'firebaseConfig' di bawah ini.
+        //  Error 'api-key-not-valid' akan hilang setelah Anda memasukkan konfigurasi yang benar.
+        //
         // =========================================================================================
         const firebaseConfig = {
-          apiKey: "AIzaSy...YOUR_API_KEY",
-          authDomain: "your-project-id.firebaseapp.com",
-          projectId: "your-project-id",
-          storageBucket: "your-project-id.appspot.com",
-          messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-          appId: "1:YOUR_APP_ID:web:YOUR_WEB_APP_ID"
+          apiKey: "AIzaSyCJt31PhT_zpVUiWSl9bc3yES0YO6maGAI", // <-- KUNCI API ANDA YANG ASLI DI SINI
+          authDomain: "myhomecare-e9ead.firebaseapp.com",
+          projectId: "myhomecare-e9ead",
+          storageBucket: "myhomecare-e9ead.firebasestorage.app",
+          messagingSenderId: "527860094564",
+          appId: "1:527860094564:web:960e79ed407e05d9983171"
         };
+        // =========================================================================================
+        // =========================================================================================
+
 
         // =========================================================================================
         // PLACEHOLDER 2: DAFTAR EMAIL YANG DIIZINKAN
@@ -808,4 +817,5 @@
     </script>
 </body>
 </html>
+
 
